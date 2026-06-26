@@ -110,6 +110,16 @@ Uploaded files are size-limited to 100 MB and stored under a randomly generated 
 
 ---
 
+## Deployment
+
+MallnSight ships ready to deploy on [Render](https://render.com)'s free tier:
+
+- The repo includes a `Procfile` (`waitress-serve --host=0.0.0.0 --port=$PORT app:app`) and a `runtime.txt` pinning Python 3.12.
+- On Render: **New → Web Service** → connect this GitHub repo → Build Command `pip install -r requirements.txt` → the Start Command is picked up automatically from the `Procfile`.
+- The free tier's filesystem is ephemeral — uploaded files and generated reports won't persist across restarts, which is expected for a stateless demo deployment.
+
+---
+
 ## Extending the YARA Rule Set
 
 Drop additional `.yar` files into [`yara_rules/`](yara_rules/) — they are compiled and scanned automatically on the next analysis request. Each rule should set a `severity` meta field (`HIGH`, `MEDIUM`, or `LOW`), which feeds directly into the risk score.

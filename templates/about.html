@@ -41,6 +41,7 @@ to run it yourself.
 <a href="#getting-started">Getting Started</a>
 <a href="#usage">Usage</a>
 <a href="#yara">Extending YARA Rules</a>
+<a href="#deployment">Deployment</a>
 <a href="#disclaimer">Disclaimer</a>
 </nav>
 </div>
@@ -138,6 +139,18 @@ Each rule should set a <code>severity</code> meta field
 (<code>HIGH</code>, <code>MEDIUM</code>, or <code>LOW</code>), which feeds
 directly into the risk score.
 </p>
+</div>
+
+<div class="doc-block" id="deployment">
+<h3>Deployment</h3>
+<p>
+MallnSight ships ready to deploy on <a href="https://render.com" target="_blank" rel="noopener">Render</a>'s free tier:
+</p>
+<ul class="doc-list">
+<li>The repo includes a <code>Procfile</code> (<code>waitress-serve --host=0.0.0.0 --port=$PORT app:app</code>) and a <code>runtime.txt</code> pinning Python 3.12.</li>
+<li>On Render: New &rarr; Web Service &rarr; connect this GitHub repo &rarr; Build Command <code>pip install -r requirements.txt</code> &rarr; Start Command is picked up automatically from the <code>Procfile</code>.</li>
+<li>The free tier's filesystem is ephemeral &mdash; uploaded files and generated reports won't persist across restarts, which is expected for a stateless demo deployment.</li>
+</ul>
 </div>
 
 <div class="doc-block" id="disclaimer">
