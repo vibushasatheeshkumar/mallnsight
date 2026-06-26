@@ -1,0 +1,349 @@
+{% extends "base.html" %}
+
+{% block title %}Investigation Report | MallnSight{% endblock %}
+
+{% block content %}
+
+<section class="dashboard-page">
+<div class="container">
+
+{% if not metadata %}
+
+<div class="error-box">
+    No analysis results yet. <a href="/upload">Upload a file</a> to get started.
+</div>
+
+{% else %}
+
+{% set risk_class = {
+    "HIGH RISK": "risk-high",
+    "SUSPICIOUS": "risk-medium",
+    "LOW RISK": "risk-low",
+    "CLEAN": "risk-clean"
+}.get(score_info.verdict, "risk-low") %}
+
+<!-- ===========================
+VERDICT
+=========================== -->
+
+<div class="verdict-card">
+<div class="row align-items-center">
+
+<div class="col-lg-8">
+
+<span class="verdict-tag {{ risk_class }}">
+{{ score_info.verdict }}
+</span>
+
+<h2 class="mt-3">
+{{ metadata.name }}
+</h2>
+
+<p>
+This file was analyzed offline using hashing, PE inspection, entropy
+analysis, string extraction and YARA pattern matching.
+</p>
+
+{% if score_info.reasons %}
+<ul class="text-secondary">
+    {% for reason in score_info.reasons %}
+    <li>{{ reason }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+</div>
+
+<div class="col-lg-4 text-end">
+
+<div class="risk-circle {{ risk_class }}">
+{{ score_info.score }}%
+</div>
+
+<span class="risk-label">
+Risk Score
+</span>
+
+</div>
+
+</div>
+</div>
+
+<!-- ===========================
+FILE INFO
+=========================== -->
+
+<div class="row mt-5 g-4">
+
+<div class="col-lg-6">
+<div class="report-card">
+<h4>File Information</h4>
+<table class="table table-dark">
+<tr><td>Filename</td><td>{{ metadata.name }}</td></tr>
+<tr><td>File Size</td><td>{{ metadata.size }} KB</td></tr>
+<tr><td>Extension</td><td>{{ metadata.extension }}</td></tr>
+<tr><td>MIME</td><td>{{ metadata.mime or "Unknown" }}</td></tr>
+</table>
+</div>
+</div>
+
+<div class="col-lg-6">
+<div class="report-card">
+<h4>Hashes</h4>
+<table class="table table-dark">
+<tr>
+<td>MD5</td>
+<td>
+<span class="hash-value">{{ hashes.md5 }}</span>
+<button class="copy-btn" data-copy="{{ hashes.md5 }}">Copy</button>
+</td>
+</tr>
+<tr>
+<td>SHA1</td>
+<td>
+<span class="hash-value">{{ hashes.sha1 }}</span>
+<button class="copy-btn" data-copy="{{ hashes.sha1 }}">Copy</button>
+</td>
+</tr>
+<tr>
+<td>SHA256</td>
+<td>
+<span class="hash-value">{{ hashes.sha256 }}</span>
+<button class="copy-btn" data-copy="{{ hashes.sha256 }}">Copy</button>
+</td>
+</tr>
+</table>
+</div>
+</div>
+
+</div>
+
+<!-- ===========================
+PE ANALYSIS
+=========================== -->
+
+<div class="row mt-4">
+<div class="col-lg-12">
+<div class="report-card">
+<h4>PE Analysis</h4>
+
+{% if pe_info.error %}
+
+<div class="error-box">
+    Not a recognized PE file ({{ pe_info.error }}). PE-specific analysis
+    (imports, exports, sections) is unavailable for this file type.
+</div>
+
+{% else %}
+
+<table class="table table-dark">
+<thead>
+<tr><th>Property</th><th>Value</th></tr>
+</thead>
+<tbody>
+<tr><td>Architecture</td><td>{{ pe_info.architecture }}</td></tr>
+<tr><td>Compile Time</td><td>{{ pe_info.compile_time }}</td></tr>
+<tr><td>Entry Point</td><td>{{ pe_info.entry_point }}</td></tr>
+<tr><td>Image Base</td><td>{{ pe_info.image_base }}</td></tr>
+<tr><td>Number of Sections</td><td>{{ pe_info.number_of_sections }}</td></tr>
+</tbody>
+</table>
+
+<h5 class="mt-4">Sections</h5>
+<table class="table table-dark">
+<thead>
+<tr><th>Name</th><th>Virtual Size</th><th>Raw Size</th><th>Entropy</th></tr>
+</thead>
+<tbody>
+{% for section in pe_info.sections %}
+<tr>
+<td>{{ section.name }}</td>
+<td>{{ section.virtual_size }}</td>
+<td>{{ section.raw_size }}</td>
+<td>{{ section.entropy }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+<h5 class="mt-4">Imports ({{ pe_info.imports|length }})</h5>
+{% if pe_info.imports %}
+<table class="table table-dark">
+<thead>
+<tr><th>DLL</th><th>Function</th></tr>
+</thead>
+<tbody>
+{% for imp in pe_info.imports[:50] %}
+<tr><td>{{ imp.dll }}</td><td>{{ imp.function }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% if pe_info.imports|length > 50 %}
+<small class="text-secondary">Showing first 50 of {{ pe_info.imports|length }} imports.</small>
+{% endif %}
+{% else %}
+<p class="text-secondary">No imports found.</p>
+{% endif %}
+
+<h5 class="mt-4">Exports ({{ pe_info.exports|length }})</h5>
+{% if pe_info.exports %}
+<ul>
+{% for exp in pe_info.exports %}
+<li>{{ exp }}</li>
+{% endfor %}
+</ul>
+{% else %}
+<p class="text-secondary">No exported functions found.</p>
+{% endif %}
+
+{% endif %}
+
+</div>
+</div>
+</div>
+
+<!-- ===========================
+YARA
+=========================== -->
+
+<div class="row mt-4">
+
+<div class="col-lg-6">
+<div class="report-card">
+<h4>YARA Matches</h4>
+
+{% if not yara_info.available %}
+
+<div class="error-box">
+    YARA scanning unavailable: {{ yara_info.error }}
+</div>
+
+{% elif yara_info.matches %}
+
+<table class="table table-dark">
+<thead>
+<tr><th>Rule</th><th>Severity</th></tr>
+</thead>
+<tbody>
+{% for match in yara_info.matches %}
+<tr>
+<td>{{ match.rule }}</td>
+<td>
+{% if match.severity == "HIGH" %}
+<span class="badge bg-danger">HIGH</span>
+{% elif match.severity == "MEDIUM" %}
+<span class="badge bg-warning text-dark">MEDIUM</span>
+{% else %}
+<span class="badge bg-secondary">LOW</span>
+{% endif %}
+</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% else %}
+
+<p class="text-secondary">No YARA rules matched.</p>
+
+{% endif %}
+
+</div>
+</div>
+
+<!-- ===========================
+ENTROPY
+=========================== -->
+
+<div class="col-lg-6">
+<div class="report-card">
+<h4>File Entropy</h4>
+
+<div class="entropy-item">
+<span>Overall ({{ entropy_info.verdict }})</span>
+<div class="progress">
+{% set pct = (entropy_info.entropy / 8 * 100)|round(1) %}
+<div class="progress-bar {% if entropy_info.entropy >= 7.5 %}bg-danger{% elif entropy_info.entropy >= 6.5 %}bg-warning{% else %}bg-success{% endif %}" style="width:{{ pct }}%">
+</div>
+</div>
+<small>{{ entropy_info.entropy }} / 8.0</small>
+</div>
+
+{% if not pe_info.error %}
+{% for section in pe_info.sections %}
+<div class="entropy-item mt-4">
+<span>{{ section.name }}</span>
+<div class="progress">
+{% set spct = (section.entropy / 8 * 100)|round(1) %}
+<div class="progress-bar {% if section.entropy >= 7.5 %}bg-danger{% elif section.entropy >= 6.5 %}bg-warning{% else %}bg-success{% endif %}" style="width:{{ spct }}%">
+</div>
+</div>
+<small>{{ section.entropy }} / 8.0</small>
+</div>
+{% endfor %}
+{% endif %}
+
+</div>
+</div>
+
+</div>
+
+<!-- ===========================
+STRINGS
+=========================== -->
+
+<div class="row mt-4">
+<div class="col-lg-12">
+<div class="report-card">
+<h4>Suspicious Strings ({{ strings_info.suspicious|length }})</h4>
+
+{% if strings_info.suspicious %}
+
+<div class="strings-box">
+{% for s in strings_info.suspicious %}
+<span class="string-pill" title="{{ s.category }}">{{ s.value }}</span>
+{% endfor %}
+</div>
+
+{% else %}
+
+<p class="text-secondary">No suspicious strings detected.</p>
+
+{% endif %}
+
+<p class="text-secondary mt-3">
+{{ strings_info.total_strings }} printable strings extracted in total.
+</p>
+
+</div>
+</div>
+</div>
+
+<!-- ===========================
+DOWNLOAD
+=========================== -->
+
+<div class="text-center mt-5">
+<a href="/download/{{ download_id }}" class="btn btn-danger btn-lg download-btn">
+<i class="ti ti-download"></i>
+Download PDF Report
+</a>
+</div>
+
+{% endif %}
+
+</div>
+</section>
+
+<script>
+document.querySelectorAll(".copy-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        navigator.clipboard.writeText(btn.dataset.copy);
+        const original = btn.textContent;
+        btn.textContent = "Copied!";
+        setTimeout(() => { btn.textContent = original; }, 1500);
+    });
+});
+</script>
+
+{% endblock %}

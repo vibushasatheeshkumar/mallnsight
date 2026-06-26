@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Flask / project runtime data
+uploads/*
+!uploads/.gitkeep
+reports/*
+!reports/.gitkeep
+
+# Environment / secrets
+.env
+*.env
+
+.pytest_cache/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
