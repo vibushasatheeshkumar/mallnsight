@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Features | MallnSight{% endblock %}
+
+{% block content %}
+
+<section class="page-hero">
+<div class="container text-center">
+
+<div class="section-tag">PLATFORM CAPABILITIES</div>
+
+<h1 class="mt-3">Everything You Need for Static Analysis</h1>
+
+<p class="text-secondary mt-3 mx-auto" style="max-width:720px;">
+MallnSight inspects suspicious files completely offline &mdash; no code is
+ever executed. Every capability below runs locally in your own environment.
+</p>
+
+</div>
+</section>
+
+<section class="features-section pt-0">
+<div class="container">
+
+<div class="row g-4">
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-fingerprint"></i>
+<h4>Hash Analysis</h4>
+<p>
+Generates MD5, SHA1 and SHA256 hashes for unique file fingerprinting,
+useful for threat-intel lookups and de-duplication.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-file-info"></i>
+<h4>File Metadata</h4>
+<p>
+Extracts filename, size, extension and MIME type to quickly
+characterize an unknown sample.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-file-code"></i>
+<h4>PE Analysis</h4>
+<p>
+Parses Windows PE headers &mdash; architecture, compile timestamp,
+entry point, image base, sections, imports and exports &mdash;
+via <code>pefile</code>.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-chart-histogram"></i>
+<h4>Entropy Analysis</h4>
+<p>
+Calculates whole-file and per-section Shannon entropy to flag
+packed, encrypted or obfuscated binaries.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-search"></i>
+<h4>String Extraction</h4>
+<p>
+Pulls ASCII and UTF-16LE strings and automatically flags suspicious
+indicators &mdash; injection APIs, command interpreters, registry
+persistence, URLs, IPs and anti-debug checks.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-shield-search"></i>
+<h4>YARA Detection</h4>
+<p>
+Scans against a bundled, extensible YARA rule set covering process
+injection, dynamic API resolution, command execution and packing.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-gauge"></i>
+<h4>Risk Scoring</h4>
+<p>
+Combines every signal above into a single 0&ndash;100 risk score and
+a clear verdict: Clean, Low Risk, Suspicious or High Risk.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-file-description"></i>
+<h4>PDF Investigation Report</h4>
+<p>
+One-click export of the full findings into a shareable PDF report,
+generated with <code>reportlab</code>.
+</p>
+</div>
+</div>
+
+<div class="col-lg-4 col-md-6">
+<div class="feature-card">
+<i class="ti ti-lock"></i>
+<h4>Fully Offline</h4>
+<p>
+Nothing is uploaded to a third party. Files, hashes and results stay
+on the machine running MallnSight.
+</p>
+</div>
+</div>
+
+</div>
+
+</div>
+</section>
+
+<section>
+<div class="container">
+<div class="cta">
+<h2>See It In Action</h2>
+<p>Upload a file and get a full static analysis report in seconds.</p>
+<a href="/upload" class="btn btn-danger btn-lg">Analyze File</a>
+</div>
+</div>
+</section>
+
+{% endblock %}

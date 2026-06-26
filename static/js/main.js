@@ -31,7 +31,8 @@ document.addEventListener("DOMContentLoaded", () => {
     =========================== */
 
     const reveals = document.querySelectorAll(
-        ".feature-card,.workflow-step,.cta,.hero-image,.section-title"
+        ".feature-card,.workflow-step,.cta,.hero-image,.section-title," +
+        ".doc-block,.contact-card"
     );
 
     const observer = new IntersectionObserver((entries)=>{
@@ -43,6 +44,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 entry.target.style.opacity="1";
                 entry.target.style.transform="translateY(0px)";
 
+                observer.unobserve(entry.target);
+
             }
 
         });
@@ -53,11 +56,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     });
 
-    reveals.forEach(item=>{
+    reveals.forEach((item,index)=>{
 
         item.style.opacity="0";
         item.style.transform="translateY(40px)";
-        item.style.transition=".7s ease";
+        item.style.transition=`opacity .6s cubic-bezier(.16,1,.3,1) ${(index%3)*0.08}s,
+                                transform .6s cubic-bezier(.16,1,.3,1) ${(index%3)*0.08}s`;
 
         observer.observe(item);
 

@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}Documentation | MallnSight{% endblock %}
+
+{% block content %}
+
+<section class="page-hero">
+<div class="container text-center">
+
+<div class="section-tag">DOCUMENTATION</div>
+
+<h1 class="mt-3">MallnSight Documentation</h1>
+
+<p class="text-secondary mt-3 mx-auto" style="max-width:720px;">
+A complete reference for what MallnSight does, how it's built, and how
+to run it yourself.
+</p>
+
+<a href="https://github.com/vibushasatheeshkumar/mallnsight"
+   target="_blank" rel="noopener"
+   class="btn btn-outline-light mt-4">
+    <i class="ti ti-brand-github"></i>
+    View Source on GitHub
+</a>
+
+</div>
+</section>
+
+<section class="docs-section">
+<div class="container">
+
+<div class="row g-5">
+
+<!-- TOC -->
+<div class="col-lg-3">
+<nav class="doc-toc">
+<h6>On this page</h6>
+<a href="#overview">Overview</a>
+<a href="#tech-stack">Tech Stack</a>
+<a href="#structure">Project Structure</a>
+<a href="#getting-started">Getting Started</a>
+<a href="#usage">Usage</a>
+<a href="#yara">Extending YARA Rules</a>
+<a href="#disclaimer">Disclaimer</a>
+</nav>
+</div>
+
+<!-- CONTENT -->
+<div class="col-lg-9">
+
+<div class="doc-block" id="overview">
+<h3>Overview</h3>
+<p>
+MallnSight is a Flask-based web application for performing
+<strong>offline, static analysis</strong> of suspicious files. It never
+executes the uploaded file &mdash; it inspects hashes, PE structure,
+entropy, embedded strings and YARA signatures to produce a risk score
+and a downloadable PDF investigation report.
+</p>
+<p>All analysis runs locally; no file or hash is ever sent to a third-party service.</p>
+</div>
+
+<div class="doc-block" id="tech-stack">
+<h3>Tech Stack</h3>
+<ul class="doc-list">
+<li><strong>Backend:</strong> Python, Flask</li>
+<li><strong>PE Parsing:</strong> pefile</li>
+<li><strong>Pattern Matching:</strong> yara-python</li>
+<li><strong>PDF Generation:</strong> reportlab</li>
+<li><strong>Frontend:</strong> Jinja2, Bootstrap 5, vanilla JS</li>
+<li><strong>CI:</strong> GitHub Actions (pytest on Python 3.11 / 3.12)</li>
+</ul>
+</div>
+
+<div class="doc-block" id="structure">
+<h3>Project Structure</h3>
+<pre class="doc-code"><code>mallnsight/
+├── app.py                  # Flask routes & request handling
+├── analysis/
+│   ├── hash.py              # MD5 / SHA1 / SHA256
+│   ├── metadata.py           # File info (size, MIME, extension)
+│   ├── pe_analysis.py        # PE header / sections / imports / exports
+│   ├── entropy.py            # Shannon entropy
+│   ├── strings.py            # String extraction + suspicious indicators
+│   ├── yara_scan.py          # YARA rule compilation & scanning
+│   ├── scoring.py            # Risk score & verdict
+│   └── report.py             # PDF report generation
+├── yara_rules/                # Bundled .yar rule files
+├── templates/                  # Jinja2 pages
+├── static/                     # CSS / JS / assets
+├── tests/                        # pytest smoke tests
+├── uploads/                       # Uploaded files (runtime only)
+└── reports/                        # Generated PDF reports (runtime only)</code></pre>
+</div>
+
+<div class="doc-block" id="getting-started">
+<h3>Getting Started</h3>
+
+<h5>Prerequisites</h5>
+<ul class="doc-list">
+<li>Python 3.11 or 3.12 (prebuilt <code>yara-python</code> wheels are available for these versions)</li>
+<li>On Windows, building <code>yara-python</code> from source requires the
+<a href="https://visualstudio.microsoft.com/visual-cpp-build-tools/" target="_blank" rel="noopener">Microsoft C++ Build Tools</a></li>
+</ul>
+
+<h5>Setup</h5>
+<pre class="doc-code"><code>git clone git@github.com:vibushasatheeshkumar/mallnsight.git
+cd mallnsight
+
+python -m venv venv
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # macOS/Linux
+
+pip install -r requirements.txt</code></pre>
+
+<h5>Run</h5>
+<pre class="doc-code"><code>python app.py</code></pre>
+<p>The app starts at <code>http://127.0.0.1:5000</code>. Debug mode is off by default; set <code>FLASK_DEBUG=1</code> to enable it during development.</p>
+</div>
+
+<div class="doc-block" id="usage">
+<h3>Usage</h3>
+<ol class="doc-list">
+<li>Go to <code>/upload</code>.</li>
+<li>Drag and drop, or browse, a file to analyze (<code>.exe</code>, <code>.dll</code>, <code>.sys</code>, <code>.msi</code>, <code>.zip</code>, <code>.apk</code>, <code>.pdf</code>, <code>.docx</code>, <code>.bin</code>).</li>
+<li>View the generated investigation dashboard: risk score, hashes, PE breakdown, entropy chart, suspicious strings, and YARA matches.</li>
+<li>Download the findings as a PDF report.</li>
+</ol>
+<p>Uploaded files are size-limited to 100&nbsp;MB and stored under a randomly generated filename to avoid collisions.</p>
+</div>
+
+<div class="doc-block" id="yara">
+<h3>Extending YARA Rules</h3>
+<p>
+Drop additional <code>.yar</code> files into <code>yara_rules/</code> &mdash;
+they're compiled and scanned automatically on the next analysis request.
+Each rule should set a <code>severity</code> meta field
+(<code>HIGH</code>, <code>MEDIUM</code>, or <code>LOW</code>), which feeds
+directly into the risk score.
+</p>
+</div>
+
+<div class="doc-block" id="disclaimer">
+<h3>Disclaimer</h3>
+<p>
+MallnSight performs <strong>static</strong> analysis only &mdash; it does
+not execute or detonate uploaded files. It is intended for educational and
+authorized security research/testing purposes. Always handle suspicious
+files in accordance with your organization's security policy.
+</p>
+</div>
+
+</div>
+
+</div>
+
+</div>
+</section>
+
+{% endblock %}
