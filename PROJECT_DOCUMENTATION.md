@@ -23,6 +23,8 @@ one risk score and a downloadable report.
 - Scan the file against YARA rules for known malicious patterns.
 - Combine all signals into a single risk score and verdict.
 - Let the user download a PDF investigation report.
+- Persist a summary of each analysis to a cloud database, so results
+  remain browsable after the local session ends.
 - Never execute the uploaded file at any point.
 
 ---
@@ -40,7 +42,8 @@ command-line tools — one for hashing, one for parsing PE headers, one for
 extracting strings, one for YARA scanning — and the analyst manually
 combines the results. **MallnSight** automates this entire workflow
 behind a single "Upload File" button and presents the combined result on
-one dashboard, with an exportable PDF report.
+one dashboard, with an exportable PDF report and a cloud-backed history
+of past analyses.
 
 ---
 
@@ -71,14 +74,73 @@ MallnSight solves this by providing:
   0–100 risk score and a plain-English verdict.
 - A web dashboard showing every result clearly, plus a one-click PDF
   export of the same information.
+- A cloud database (MongoDB Atlas) that saves a summary of each
+  analysis so it remains visible on a History page later.
 - An extensible YARA rule folder, so new detection rules can be added
   without changing any code.
 
 ---
 
-## 5. Workflow Diagrams
+## 5. System Architecture
 
-### 5.1 High-Level User Flow
+MallnSight is a **monolithic, server-rendered web application** — a
+single Flask process handles both the HTTP layer and the analysis
+pipeline. No database is *required* to run the core analysis feature;
+one cloud database (MongoDB Atlas) is used, optionally, purely to
+persist analysis summaries for the History page.
+
+**Components:**
+
+| Component | Responsibility |
+|---|---|
+| **Browser (client)** | Bootstrap 5 + vanilla JS, renders server-sent Jinja2 HTML |
+| **Flask application (`app.py`)** | Routing, upload validation (extension allow-list, 100 MB cap, UUID storage names), orchestrates the analysis pipeline |
+| **Analysis engine (`analysis/`)** | Independent modules: hashing, metadata, PE parsing, entropy, strings, YARA, scoring, PDF report |
+| **Local storage (`uploads/`, `reports/`)** | Holds the uploaded file and generated PDF for the duration of one request; ephemeral, gitignored |
+| **Cloud database (MongoDB Atlas)** | Stores a small per-analysis summary (hashes, score, verdict, timestamp) for the `/history` page; optional, configured via `MONGODB_URI` |
+
+See Section 6 for the full architecture diagram.
+
+---
+
+## 6. Diagrams
+
+### 6.1 System Architecture Diagram
+
+```
+                        ┌──────────────────────────┐
+                        │         Browser           │
+                        │  (Bootstrap 5 + vanilla   │
+                        │   JS, server-rendered      │
+                        │   Jinja2 templates)         │
+                        └────────────┬───────────────┘
+                                     │ HTTP (multipart/form-data)
+                                     ▼
+                        ┌──────────────────────────┐
+                        │     Flask Application      │
+                        │         (app.py)            │
+                        │  - Route handling            │
+                        │  - Upload validation          │
+                        └────────────┬─────────────────┘
+                                     │ delegates to
+                                     ▼
+              ┌──────────────────────────────────────────────┐
+              │                Analysis Engine                  │
+              │                (analysis/ package)                │
+              │  hash.py · metadata.py · pe_analysis.py            │
+              │  entropy.py · strings.py · yara_scan.py             │
+              │  scoring.py · report.py · history.py                 │
+              └───────────────────────┬──────────────────────────────┘
+                                      │ writes
+                ┌─────────────────────┼─────────────────────────┐
+                ▼                     ▼                         ▼
+        uploads/<uuid>.ext    reports/<name>_<ts>.pdf    MongoDB Atlas
+       (ephemeral, gitignored) (ephemeral, gitignored)  "analyses" collection
+                                                          (cloud, persistent,
+                                                           optional)
+```
+
+### 6.2 High-Level User Flow
 
 ```
  ┌──────────┐     ┌───────────┐     ┌───────────────┐     ┌────────────┐
@@ -87,14 +149,15 @@ MallnSight solves this by providing:
  │          │     │   size)   │     │    Pipeline       │     │            │
  └──────────┘     └───────────┘     └───────────────┘     └─────┬──────┘
                                                                     │
-                                                                    ▼
-                                                          ┌──────────────────┐
-                                                          │ Download PDF      │
-                                                          │ Report (optional) │
-                                                          └──────────────────┘
+                                          ┌─────────────────────────┴────────────┐
+                                          ▼                                      ▼
+                               ┌──────────────────┐                  ┌───────────────────┐
+                               │ Download PDF      │                  │ Saved to Cloud      │
+                               │ Report (optional) │                  │ History (optional)   │
+                               └──────────────────┘                  └───────────────────┘
 ```
 
-### 5.2 Analysis Pipeline (Detailed)
+### 6.3 Analysis Pipeline (Detailed)
 
 ```
                      uploaded file
@@ -121,13 +184,14 @@ MallnSight solves this by providing:
                               calculate_score()
                        (combines everything → risk score)
                                          │
-                  ┌──────────────────────┴───────────────────────┐
-                  ▼                                              ▼
-         render dashboard.html                          generate_report()
-        (shown to the user)                          (PDF saved to reports/)
+                  ┌──────────────────────┼───────────────────────┐
+                  ▼                      ▼                       ▼
+         render dashboard.html   generate_report()      save_analysis()
+        (shown to the user)    (PDF saved to reports/)  (MongoDB Atlas,
+                                                          optional)
 ```
 
-### 5.3 Request/Response Sequence
+### 6.4 Request/Response Sequence
 
 ```
 Browser            Flask App (app.py)         Analysis Modules
@@ -138,19 +202,78 @@ Browser            Flask App (app.py)         Analysis Modules
   │                       │◀── results dict ──────────│
   │                       │── generate PDF ──────────▶│
   │                       │◀── pdf file path ─────────│
+  │                       │── save_analysis() ───────▶│ (MongoDB Atlas)
   │◀── dashboard.html ────│                          │
   │  GET /download/<id>   │                          │
   │ ─────────────────────▶│                          │
   │◀── PDF file ──────────│                          │
+  │  GET /history         │                          │
+  │ ─────────────────────▶│── get_recent_analyses() ─▶│ (MongoDB Atlas)
+  │◀── history.html ──────│                          │
 ```
 
 ---
 
-## 6. Technical Implementation
+## 7. Database Design
+
+MallnSight's core analysis pipeline needs no database — a file is
+uploaded, analyzed, rendered into a dashboard, and optionally exported
+to PDF, all within one HTTP request-response pair.
+
+A **cloud database (MongoDB Atlas)** is used for exactly one purpose:
+persisting a summary of each analysis for the `/history` page, since a
+purely request-scoped design can't offer that on its own. It's
+implemented as a single document-store collection (no relational
+schema/joins needed, since each record is flat and self-contained):
+
+**Collection: `analyses`** (database `mallnsight`)
+
+| Field | Type | Description |
+|---|---|---|
+| `_id` | ObjectId | MongoDB-generated primary key |
+| `filename` | string | Original uploaded filename |
+| `size_kb` | number | File size in KB |
+| `md5`, `sha1`, `sha256` | string | File hashes |
+| `risk_score` | int | 0–100 |
+| `verdict` | string | `CLEAN` / `LOW RISK` / `SUSPICIOUS` / `HIGH RISK` |
+| `reasons` | array of strings | Human-readable scoring reasons |
+| `analyzed_at` | datetime (UTC) | When the analysis was run |
+
+Implemented in `analysis/history.py` via `pymongo`. The connection is
+lazy (made on first use, not at startup) and the result — success or
+failure — is cached for the process lifetime. The feature is entirely
+optional, controlled by the `MONGODB_URI` environment variable; the
+rest of the application behaves identically whether it's configured or
+not.
+
+---
+
+## 8. Workflow
+
+End-to-end flow for a single analysis:
+
+1. **Upload** — user submits a file via `/upload` to the `/analyze`
+   endpoint (`multipart/form-data`, POST only).
+2. **Validation** — filename is sanitized, extension checked against an
+   allow-list, request size capped at 100 MB.
+3. **Storage** — file is saved under `uploads/<uuid4>.<ext>`.
+4. **Analysis pipeline** — hashing → metadata → PE analysis → entropy →
+   string extraction → YARA scan, each module independent and read-only.
+5. **Scoring** — all signals combined into one 0–100 score and verdict.
+6. **Reporting** — full results rendered into a PDF, saved to `reports/`.
+7. **Cloud save** — a summary (hashes, score, verdict, timestamp) is
+   saved to MongoDB Atlas, if configured (silently skipped if not).
+8. **Response** — `dashboard.html` rendered with every result.
+9. **History (optional, later)** — `/history` reads recent summaries
+   back from MongoDB Atlas and lists them, newest first.
+
+---
+
+## 9. Technical Implementation
 
 | Layer | Technology | Detail |
 |---|---|---|
-| Web framework | Flask | Routes: `/`, `/about`, `/features`, `/upload`, `/contact`, `POST /analyze`, `GET /download/<id>` |
+| Web framework | Flask | Routes: `/`, `/about`, `/features`, `/upload`, `/contact`, `/history`, `POST /analyze`, `GET /download/<id>` |
 | File validation | Werkzeug | `secure_filename`, extension allow-list, 100 MB size cap, UUID-based storage names |
 | Hashing | `hashlib` (stdlib) | MD5, SHA1, SHA256 computed via chunked (4 KB) reads |
 | Metadata | `os`, `mimetypes` (stdlib) | filename, size, extension, MIME type |
@@ -160,15 +283,15 @@ Browser            Flask App (app.py)         Analysis Modules
 | YARA scanning | `yara-python` | Compiles all `.yar` files in `yara_rules/`, returns rule/description/severity per match |
 | Scoring | custom (`scoring.py`) | Weighted sum of entropy, YARA severity, suspicious strings, high-entropy sections → 0–100 score + verdict |
 | PDF report | `reportlab` | `SimpleDocTemplate` + `Platypus` tables mirroring the dashboard |
-| Cloud database | MongoDB Atlas (`pymongo`) | Optional `/history` feature — saves a summary (hashes, score, verdict, timestamp) of every analysis to a cloud-hosted MongoDB cluster; degrades gracefully if not configured |
+| Cloud database | MongoDB Atlas (`pymongo`) | `/history` feature — saves a summary of every analysis to a cloud-hosted MongoDB cluster; degrades gracefully if not configured |
 | Frontend | Jinja2, Bootstrap 5, vanilla JS | Dark enterprise theme, drag-and-drop upload, scroll-reveal animation, copy-to-clipboard |
-| Testing | `pytest` | Smoke tests for every route + the full analysis pipeline |
+| Testing | `pytest` | Smoke tests for every route + the full analysis pipeline + cloud-history graceful degradation |
 | CI/CD | GitHub Actions | Runs the test suite on Python 3.11 and 3.12 on every push/PR |
 | Hosting | Render + Waitress | `Procfile` runs `waitress-serve --host=0.0.0.0 --port=$PORT app:app` |
 
 ---
 
-## 7. Screenshots
+## 10. Screenshots
 
 > Automated screenshots could not be generated in this environment (no
 > headless browser tooling was available). Run the app locally
@@ -182,6 +305,7 @@ Browser            Flask App (app.py)         Analysis Modules
 | Documentation Page | _[insert screenshot of `/about`]_ |
 | Upload Page | _[insert screenshot of `/upload`]_ |
 | Analysis Dashboard (after uploading a file) | _[insert screenshot of `/analyze` result]_ |
+| History Page | _[insert screenshot of `/history`]_ |
 | PDF Report | _[insert screenshot of the downloaded PDF]_ |
 
 To embed an image in this Markdown file once captured:
@@ -194,7 +318,7 @@ To embed an image in this Markdown file once captured:
 
 ---
 
-## 8. Testing Results
+## 11. Testing Results
 
 Testing was done using `pytest` with Flask's built-in test client
 (`tests/test_app.py`). Actual run on this build:
@@ -233,7 +357,7 @@ tests/test_app.py::test_analyze_accepts_pe_file                       PASSED
 | 10 | History page without MongoDB configured | `GET /history`, no `MONGODB_URI` | HTTP 200, "unavailable" message shown, no crash | ✅ 200, graceful message |
 | 11 | Analyze a real PE file | `POST /analyze` with `python.exe` | HTTP 200, contains risk score | ✅ 200, risk score present |
 
-### Manual End-to-End Result (sample run)
+### Manual End-to-End Result (sample run, with MongoDB Atlas live)
 
 Uploading `python.exe` (the Python interpreter binary, used purely as a
 real-world PE sample) produced:
@@ -244,14 +368,16 @@ real-world PE sample) produced:
 | Verdict | SUSPICIOUS |
 | Risk Score | 63 / 100 |
 | Reason | YARA match on `Suspicious_AntiDebug_AntiVM` (the CPython runtime does check for an attached debugger) |
+| Saved to MongoDB Atlas | ✅ Yes — confirmed via direct query, document matched the schema in Section 7 |
+| Shown on `/history` | ✅ Yes — listed with correct filename, hash, score, and verdict |
 
 This confirms the full pipeline — hashing, PE analysis, entropy, string
-extraction, YARA scanning, scoring, and dashboard rendering — works
-correctly end-to-end on a real file.
+extraction, YARA scanning, scoring, dashboard rendering, and cloud
+history — works correctly end-to-end on a real file.
 
 ---
 
-## 9. Challenges / Limitations
+## 12. Challenges / Limitations
 
 **Challenges faced during development:**
 
@@ -287,21 +413,19 @@ correctly end-to-end on a real file.
    service, `/history` kept failing with `bad auth: authentication
    failed`. The cause: the same service was also linked to a shared
    Render "Environment Group" of the same name, which still held an
-   older, no-longer-valid connection string. Render exposed both, and
-   the stale one took effect. Fixed by updating the value in the linked
-   group as well, not just on the service directly. This was made
-   harder to diagnose because multiple Render services
-   (`mallnsight`, `mallnsight-1`, `mallnsight-2`) had been created
-   during earlier troubleshooting, each with independent environment
-   variables — easy to edit the wrong one.
+   older, no-longer-valid connection string, and the stale one took
+   effect. Fixed by updating the value in the linked group as well, not
+   just on the service directly. This was made harder to diagnose
+   because multiple Render services (`mallnsight`, `mallnsight-1`,
+   `mallnsight-2`) had been created during earlier troubleshooting, each
+   with independent environment variables.
 
 **Current limitations:**
 
 - A full result (PE breakdown, strings, YARA matches) isn't saved
   anywhere — only a summary (hashes, score, verdict) is stored in
-  MongoDB Atlas for the History page, and only when `MONGODB_URI` is
-  configured; the full dashboard view itself isn't reconstructable
-  later.
+  MongoDB Atlas for the History page; the full dashboard view itself
+  isn't reconstructable later.
 - PE-specific analysis (sections, imports, exports) is only available
   for Windows executable files; other formats get limited information.
 - Free-tier hosting (Render) has an ephemeral filesystem and may "sleep"
@@ -311,7 +435,7 @@ correctly end-to-end on a real file.
 
 ---
 
-## 10. Future Enhancements
+## 13. Future Enhancements
 
 - Add deeper analysis for non-PE files (PDF, ZIP, APK, Office documents).
 - Store the *full* analysis result (not just a summary) in MongoDB Atlas
@@ -325,21 +449,23 @@ correctly end-to-end on a real file.
 
 ---
 
-## 11. Conclusion
+## 14. Conclusion
 
 MallnSight successfully brings together several static malware-analysis
 techniques — hashing, PE structure inspection, entropy analysis, string
 extraction, and YARA signature matching — into one simple web
-application. A user can upload a file and, within seconds, get a clear
-risk score, a detailed breakdown of why that score was given, and a
-downloadable PDF report, all without the file ever being executed. The
-project demonstrates that a lightweight Flask application is enough to
-replace a fragmented set of command-line malware-analysis tools for
-first-pass triage.
+application, backed by a cloud database for persistent history. A user
+can upload a file and, within seconds, get a clear risk score, a
+detailed breakdown of why that score was given, a downloadable PDF
+report, and a record on the History page they can revisit later — all
+without the file ever being executed. The project demonstrates that a
+lightweight Flask application, combined with a narrowly-scoped cloud
+database integration, is enough to replace a fragmented set of
+command-line malware-analysis tools for first-pass triage.
 
 ---
 
-## 12. References
+## 15. References
 
 1. Flask Documentation — https://flask.palletsprojects.com/
 2. `pefile` (PE parsing library) — https://github.com/erocarrera/pefile
@@ -349,8 +475,10 @@ first-pass triage.
 6. OWASP File Upload Cheat Sheet — https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html
 7. Shannon, C.E., "A Mathematical Theory of Communication," Bell System Technical Journal, 1948.
 8. Microsoft PE/COFF Specification — https://learn.microsoft.com/en-us/windows/win32/debug/pe-format
-9. Render Documentation — https://render.com/docs
-10. Waitress WSGI Server — https://docs.pylonsproject.org/projects/waitress/
+9. MongoDB Atlas Documentation — https://www.mongodb.com/docs/atlas/
+10. `pymongo` Documentation — https://pymongo.readthedocs.io/
+11. Render Documentation — https://render.com/docs
+12. Waitress WSGI Server — https://docs.pylonsproject.org/projects/waitress/
 
 ---
 
