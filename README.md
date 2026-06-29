@@ -171,6 +171,14 @@ Until these steps are done on Render specifically, `/history` will show
 "unavailable" on the live site even though it works locally — this is
 expected, not a bug.
 
+**If you still get a `bad auth` error after setting `MONGODB_URI`**,
+check for a **Linked Environment Group** on the service (Environment
+tab → "Linked Environment Groups" section). If the same service is
+also pulling `MONGODB_URI`/`MONGODB_DB` from a shared group, update the
+value there too — a stale value in the group can override or conflict
+with the one set directly on the service. Update both places to the
+same value to be safe.
+
 ---
 
 ## Extending the YARA Rule Set

@@ -351,6 +351,18 @@ Python 3.11 and 3.12 for every push/PR to `main`.
   service), and Atlas's Network Access must allow `0.0.0.0/0` since
   Render's free tier has no fixed outbound IP. See `README.md` →
   "Enabling `/history` on Render."
+- **`bad auth : authentication failed` from Atlas on Render, even after
+  setting `MONGODB_URI` correctly on the service**: check Render's
+  Environment tab for a **Linked Environment Group**. If the service
+  also pulls `MONGODB_URI`/`MONGODB_DB` from a shared group, a stale
+  value sitting in that group can conflict with (or take effect over)
+  the one set directly on the service. Update the value in *both*
+  places — the direct service variable and the linked group — to avoid
+  ambiguity. Also watch for accidentally creating multiple Render
+  services for the same repo while troubleshooting (e.g.
+  `mallnsight`, `mallnsight-1`, `mallnsight-2`) — each has its own
+  independent environment variables, so fixing one doesn't fix the
+  others.
 - **`history.py`'s connection is cached per-process**: once
   `_get_collection()` has run once (success or failure), it won't retry
   until the process restarts. Use `analysis.history._reset_cache()`

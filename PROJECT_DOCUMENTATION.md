@@ -282,6 +282,18 @@ correctly end-to-end on a real file.
    `MONGODB_URI` has to be added a second time, directly in Render's
    own Environment settings, for the cloud feature to work on the
    public URL.
+7. **A "Linked Environment Group" silently held a stale credential.**
+   Even after setting the correct `MONGODB_URI` directly on the Render
+   service, `/history` kept failing with `bad auth: authentication
+   failed`. The cause: the same service was also linked to a shared
+   Render "Environment Group" of the same name, which still held an
+   older, no-longer-valid connection string. Render exposed both, and
+   the stale one took effect. Fixed by updating the value in the linked
+   group as well, not just on the service directly. This was made
+   harder to diagnose because multiple Render services
+   (`mallnsight`, `mallnsight-1`, `mallnsight-2`) had been created
+   during earlier troubleshooting, each with independent environment
+   variables — easy to edit the wrong one.
 
 **Current limitations:**
 
