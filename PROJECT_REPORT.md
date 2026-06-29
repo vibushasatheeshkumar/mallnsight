@@ -92,10 +92,11 @@ MallnSight addresses this by providing:
 
 ## 5. System Architecture
 
-MallnSight follows a classic **monolithic server-rendered web
-application** architecture — a single Flask process handling both the
-HTTP layer and the analysis pipeline, with no external services or
-databases required to run it.
+MallnSight follows a **monolithic server-rendered web application**
+architecture — a single Flask process handling both the HTTP layer and
+the analysis pipeline. No database is *required* to run it; one cloud
+database (MongoDB Atlas) is used optionally, purely to persist analysis
+summaries for the `/history` page.
 
 ```
                         ┌──────────────────────────┐
@@ -129,59 +130,81 @@ databases required to run it.
               │  yara_scan.py   → yara-python against yara_rules/*.yar   │
               │  scoring.py     → combines all signals → score + verdict  │
               │  report.py      → reportlab → PDF investigation report     │
+              │  history.py     → pymongo → MongoDB Atlas (optional)        │
               └───────────────────────┬──────────────────────────────────┘
                                       │ writes
-                          ┌───────────┴────────────┐
-                          ▼                         ▼
-                   uploads/<uuid>.ext        reports/<name>_<ts>.pdf
-                  (ephemeral, gitignored)    (ephemeral, gitignored)
+                ┌─────────────────────┼─────────────────────────┐
+                ▼                     ▼                         ▼
+        uploads/<uuid>.ext    reports/<name>_<ts>.pdf    MongoDB Atlas
+       (ephemeral, gitignored) (ephemeral, gitignored)  "analyses" collection
+                                                          (cloud, persistent)
 ```
 
 **Key architectural decisions:**
 
-- **Stateless, file-based storage.** Uploaded files and generated reports
-  are written to local disk (`uploads/`, `reports/`) under randomly
-  generated names. There is no database — every analysis result is
-  rendered directly into the response and also baked into a PDF; nothing
-  is queried back out later. This keeps the system trivially deployable
-  (no DB provisioning) at the cost of not retaining analysis history.
+- **Local, file-based storage for the analysis artifacts themselves.**
+  Uploaded files and generated reports are written to local disk
+  (`uploads/`, `reports/`) under randomly generated names and are not
+  queried back out later — each request renders its own result directly
+  into the response.
+- **A cloud database used narrowly, not as a general persistence layer.**
+  MongoDB Atlas stores only a lightweight summary per analysis (hashes,
+  score, verdict, timestamp) for the `/history` page — not the uploaded
+  file, the PDF, or the full PE/strings/YARA breakdown. This keeps the
+  core analysis pipeline's deployability (no DB provisioning needed to
+  run it) while still gaining persistent, cloud-backed history.
 - **Module independence.** Each file in `analysis/` is a pure function
   (file path in → structured dict out) with no shared mutable state,
   which makes the pipeline easy to test in isolation and easy to extend
   with new modules.
-- **Graceful degradation.** `yara_scan.py` detects at import time whether
-  `yara-python` is installed; if not, it returns an "unavailable" result
-  instead of crashing the request, so the rest of the pipeline still
-  produces a usable report.
+- **Graceful degradation.** Both `yara_scan.py` and `history.py` detect
+  at first use whether their dependency (`yara-python` / a reachable
+  MongoDB Atlas cluster) is available; if not, they return an
+  "unavailable" result instead of crashing the request, so the rest of
+  the pipeline still produces a usable report.
 
 ---
 
 ## 6. Database Design
 
-**Not required for the current scope**, and intentionally omitted.
+MallnSight's core analysis pipeline is still fully self-contained — a
+file is uploaded, analyzed in-memory/on-disk, rendered into a dashboard,
+and optionally exported to PDF, all within one HTTP request-response
+pair, with no database read required to serve that response.
 
-MallnSight's request/response cycle is fully self-contained: a file is
-uploaded, analyzed in-memory/on-disk, rendered into a dashboard, and
-optionally exported to PDF — all within a single HTTP request-response
-pair. No analysis result needs to be looked up by a *different* later
-request, so there is no entity that benefits from persistent, queryable
-storage today.
+However, a **cloud database (MongoDB Atlas)** has been added for one
+specific purpose: persisting a summary of each analysis so it remains
+browsable on the `/history` page after the request ends — something a
+purely request-scoped design cannot provide. This is implemented as a
+single document-store collection rather than a relational schema, since
+each record is a flat, self-contained summary with no joins required:
 
-**If "Future Enhancements" (Section 9) such as analysis history,
-multi-user accounts, or a searchable hash database were implemented**, the
-following minimal relational schema would be introduced:
+**Collection: `analyses`** (database `mallnsight`)
 
-| Table | Key Columns | Purpose |
+| Field | Type | Description |
 |---|---|---|
-| `samples` | `id`, `sha256` (unique), `filename`, `size`, `mime`, `uploaded_at` | One row per unique uploaded file (de-duplicated by hash) |
-| `analyses` | `id`, `sample_id` (FK), `risk_score`, `verdict`, `entropy`, `created_at` | One row per analysis run against a sample |
-| `yara_matches` | `id`, `analysis_id` (FK), `rule_name`, `severity` | Normalized YARA hits per analysis |
-| `suspicious_strings` | `id`, `analysis_id` (FK), `category`, `value` | Normalized flagged strings per analysis |
-| `users` | `id`, `email`, `password_hash`, `created_at` | Only needed if multi-user auth is added |
+| `_id` | ObjectId | MongoDB-generated primary key |
+| `filename` | string | Original uploaded filename |
+| `size_kb` | number | File size in KB |
+| `md5`, `sha1`, `sha256` | string | File hashes |
+| `risk_score` | int | 0–100 |
+| `verdict` | string | `CLEAN` / `LOW RISK` / `SUSPICIOUS` / `HIGH RISK` |
+| `reasons` | array of strings | Human-readable scoring reasons |
+| `analyzed_at` | datetime (UTC) | When the analysis was run |
 
-This would use SQLite for a single-instance deployment or PostgreSQL for
-a multi-instance one, via SQLAlchemy as the ORM layer (consistent with
-Flask's ecosystem).
+This is implemented in `analysis/history.py` via `pymongo`, connecting
+lazily on first use and caching the connection (or failure) for the
+process lifetime. The feature is entirely optional — controlled by the
+`MONGODB_URI` environment variable — and the rest of the application
+(including the core analysis pipeline) functions identically whether it
+is configured or not.
+
+**If further history features were added** (e.g. normalized per-match
+YARA records, multi-user accounts, deduplication by hash across users),
+the schema above would be extended with related collections (e.g.
+`yara_matches`, `users`) rather than switched to a relational database,
+since the access pattern remains "fetch one analysis or a recent list,"
+not complex joined queries.
 
 ---
 
@@ -227,7 +250,8 @@ End-to-end request flow for a single analysis:
 - **Framework:** Flask 3.x, served by Werkzeug's dev server locally and
   by `waitress` (`waitress-serve`) in production/Render deployment.
 - **Routing:** `app.py` exposes `/`, `/about`, `/features`, `/upload`,
-  `/dashboard`, `/contact`, `POST /analyze`, and `GET /download/<id>`.
+  `/dashboard`, `/contact`, `/history`, `POST /analyze`, and
+  `GET /download/<id>`.
 - **File handling:** `werkzeug.utils.secure_filename` + a hand-rolled
   extension allow-list + `MAX_CONTENT_LENGTH` config for upload
   hardening.
@@ -244,6 +268,7 @@ End-to-end request flow for a single analysis:
 | `yara_scan.py` | `yara-python` | Compiles all `.yar` files in `yara_rules/` once and caches the compiled ruleset; returns rule name, description, and severity per match |
 | `scoring.py` | — | Weighted sum: entropy thresholds (+15/+30), YARA severity (`HIGH`+25, `MEDIUM`+15, `LOW`+5 each), suspicious string categories (+8 each), high-entropy PE sections (+10), capped at 100, mapped to a 4-tier verdict |
 | `report.py` | `reportlab` | `SimpleDocTemplate`/`Platypus` PDF with styled tables mirroring the dashboard |
+| `history.py` | `pymongo` (MongoDB Atlas) | Saves a summary per analysis to a cloud collection; lazily connects and caches success/failure; powers the `/history` page; fully optional |
 
 ### 8.3 YARA Rule Set (`yara_rules/suspicious_indicators.yar`)
 
@@ -270,10 +295,12 @@ the scoring engine:
 ### 8.5 Testing & CI
 
 - `tests/test_app.py` — pytest smoke suite using Flask's test client:
-  every static route returns 200; `/analyze` correctly rejects missing
-  files (400), GET requests (405), and disallowed extensions (400); a
-  real PE file (`python.exe`) is analyzed end-to-end and asserted to
-  contain a risk score.
+  every static route (including `/history`) returns 200; `/analyze`
+  correctly rejects missing files (400), GET requests (405), and
+  disallowed extensions (400); `/history` degrades gracefully (200,
+  "unavailable" message) when `MONGODB_URI` isn't set; a real PE file
+  (`python.exe`) is analyzed end-to-end and asserted to contain a risk
+  score.
 - `.github/workflows/ci.yml` — GitHub Actions matrix running the suite on
   Python 3.11 and 3.12 for every push/PR to `main`.
 
@@ -284,6 +311,10 @@ the scoring engine:
 - Designed for Render's free tier — connect the GitHub repo, Render
   builds from `requirements.txt` and starts via the `Procfile`
   automatically.
+- `MONGODB_URI` (and optionally `MONGODB_DB`) must be set as an
+  environment variable on the host (Render dashboard, or a local `.env`
+  copied from `.env.example`) to enable `/history`; the app runs
+  identically without it.
 
 ---
 
@@ -325,6 +356,15 @@ the scoring engine:
    animation had to be reinterpreted for a server-rendered Jinja/vanilla-JS
    stack — solved with equivalent CSS `cubic-bezier` easing and staggered
    `IntersectionObserver` reveals rather than the literal library.
+7. **Environment-variable load order with `python-dotenv`.** Initially,
+   `load_dotenv()` was called *after* `analysis.history` had already been
+   imported, and that module read `MONGODB_URI` from `os.environ` once at
+   import time — meaning a value placed in `.env` would silently never be
+   picked up. Fixed by calling `load_dotenv()` before any other imports
+   in `app.py`, and, more robustly, by changing `history.py` to read the
+   environment variable lazily inside its connection function instead of
+   at module import time, so the bug class can't recur regardless of
+   import order.
 
 ---
 
@@ -333,8 +373,11 @@ the scoring engine:
 - **Non-PE format support** — first-class analysis for ZIP/APK (archive
   listing, manifest parsing), PDF (embedded JavaScript/object detection),
   and Office documents (macro extraction), rather than only PE files.
-- **Analysis history & persistence** — introduce the database schema
-  outlined in Section 6 to let users revisit past analyses by hash.
+- **Full-result history, not just a summary** — extend the existing
+  MongoDB Atlas integration (Section 6) to store the complete analysis
+  result (PE breakdown, strings, YARA matches), so a past dashboard view
+  can be reopened directly instead of only its score being visible on
+  `/history`.
 - **Multi-user accounts & authentication** — per-user upload history and
   access control, useful for team/SOC usage.
 - **Optional sandboxed dynamic analysis** — integrate with an isolated

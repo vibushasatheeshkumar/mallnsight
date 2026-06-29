@@ -20,8 +20,9 @@ MallnSight is a Flask-based web application for performing **offline, static ana
 | **YARA Scanning** | Bundled rule set detecting process injection, dynamic loading, command execution, anti-debug/anti-VM behavior, and high-entropy packing |
 | **Risk Scoring** | Combines entropy, YARA matches, and suspicious indicators into a 0–100 score and verdict (`CLEAN`, `LOW RISK`, `SUSPICIOUS`, `HIGH RISK`) |
 | **PDF Reports** | One-click downloadable investigation report via [`reportlab`](https://www.reportlab.com/) |
+| **Cloud Analysis History** | Optional — every analysis summary (hash, score, verdict, timestamp) is saved to a MongoDB Atlas cluster and browsable on the `/history` page, so results outlive the ephemeral local `uploads/`/`reports/` folders |
 
-All analysis runs locally — no file or hash is ever sent to a third-party service.
+All file analysis runs locally — the uploaded file itself is never sent anywhere. The only thing that leaves the machine is the small analysis *summary* (hashes + score, not the file) stored in MongoDB Atlas, and only if `MONGODB_URI` is configured. Without it, the app works exactly the same, just without history.
 
 ---
 
@@ -30,6 +31,7 @@ All analysis runs locally — no file or hash is ever sent to a third-party serv
 - **Backend:** Python, Flask
 - **PE Parsing:** pefile
 - **Pattern Matching:** yara-python
+- **Cloud Database:** MongoDB Atlas (via `pymongo`) — optional, for analysis history
 - **PDF Generation:** reportlab
 - **Frontend:** Jinja2, Bootstrap 5, vanilla JS
 
@@ -48,7 +50,8 @@ mallnsight/
 │   ├── strings.py              # String extraction + suspicious indicators
 │   ├── yara_scan.py            # YARA rule compilation & scanning
 │   ├── scoring.py               # Risk score & verdict
-│   └── report.py                # PDF report generation
+│   ├── report.py                # PDF report generation
+│   └── history.py               # MongoDB Atlas cloud history (optional)
 ├── yara_rules/                 # Bundled .yar rule files
 ├── templates/                   # Jinja2 pages (home, upload, dashboard, ...)
 ├── static/                      # CSS / JS / assets
@@ -99,12 +102,41 @@ FLASK_DEBUG=1 python app.py
 
 ---
 
+## Cloud History Setup (Optional — MongoDB Atlas)
+
+The `/history` page stores a summary of every analysis (filename,
+hashes, score, verdict, timestamp) in a MongoDB Atlas cloud database.
+This is entirely optional — without it, everything else works exactly
+the same, just without a history page.
+
+1. Create a free cluster at [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas).
+2. Under **Database Access**, create a database user (username + password).
+3. Under **Network Access**, allow your IP (or `0.0.0.0/0` for quick testing).
+4. Click **Connect → Drivers** and copy the connection string, e.g.:
+   `mongodb+srv://<user>:<password>@<cluster-host>/?retryWrites=true&w=majority`
+5. Copy `.env.example` to `.env` and paste the connection string into `MONGODB_URI`:
+
+```bash
+cp .env.example .env
+```
+
+```env
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster-host>/?retryWrites=true&w=majority
+```
+
+The app loads `.env` automatically on startup (via `python-dotenv`). If
+`MONGODB_URI` is missing or unreachable, `/history` simply shows an
+"unavailable" message instead of failing.
+
+---
+
 ## Usage
 
 1. Go to `/upload`.
 2. Drag and drop, or browse, a file to analyze (`.exe`, `.dll`, `.sys`, `.msi`, `.zip`, `.apk`, `.pdf`, `.docx`, `.bin`).
 3. View the generated investigation dashboard: risk score, hashes, PE breakdown, entropy chart, suspicious strings, and YARA matches.
 4. Download the findings as a PDF report.
+5. Check `/history` to see a log of past analyses (if MongoDB Atlas is configured).
 
 Uploaded files are size-limited to 100 MB and stored under a randomly generated filename to avoid collisions.
 
@@ -117,6 +149,7 @@ MallnSight ships ready to deploy on [Render](https://render.com)'s free tier:
 - The repo includes a `Procfile` (`waitress-serve --host=0.0.0.0 --port=$PORT app:app`) and a `runtime.txt` pinning Python 3.12.
 - On Render: **New → Web Service** → connect this GitHub repo → Build Command `pip install -r requirements.txt` → the Start Command is picked up automatically from the `Procfile`.
 - The free tier's filesystem is ephemeral — uploaded files and generated reports won't persist across restarts, which is expected for a stateless demo deployment.
+- To enable `/history` on the deployed instance, add `MONGODB_URI` (and optionally `MONGODB_DB`) as an environment variable in the Render dashboard — **Environment** tab on your service, not in the repo.
 
 ---
 

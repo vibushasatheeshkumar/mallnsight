@@ -16,7 +16,7 @@ def client():
         yield client
 
 
-@pytest.mark.parametrize("route", ["/", "/about", "/features", "/upload", "/contact"])
+@pytest.mark.parametrize("route", ["/", "/about", "/features", "/upload", "/contact", "/history"])
 def test_static_pages_load(client, route):
     response = client.get(route)
     assert response.status_code == 200
@@ -38,6 +38,20 @@ def test_analyze_rejects_disallowed_extension(client):
     }
     response = client.post("/analyze", data=data, content_type="multipart/form-data")
     assert response.status_code == 400
+
+
+def test_history_degrades_gracefully_without_mongodb_uri(client, monkeypatch):
+    from analysis import history
+
+    monkeypatch.delenv("MONGODB_URI", raising=False)
+    history._reset_cache()
+
+    response = client.get("/history")
+
+    assert response.status_code == 200
+    assert b"unavailable" in response.data.lower()
+
+    history._reset_cache()
 
 
 def test_analyze_accepts_pe_file(client):

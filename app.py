@@ -1,6 +1,10 @@
 import os
 import uuid
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from flask import Flask, render_template, request, send_file, abort
 from werkzeug.utils import secure_filename
 
@@ -12,6 +16,7 @@ from analysis.strings import extract_strings
 from analysis.yara_scan import scan_file
 from analysis.scoring import calculate_score
 from analysis.report import generate_report
+from analysis.history import save_analysis, get_recent_analyses, is_available, get_connection_error
 
 
 app = Flask(__name__)
@@ -128,6 +133,9 @@ def analyze():
     download_id = uuid.uuid4().hex
     _generated_reports[download_id] = report_path
 
+    # Cloud history (MongoDB Atlas) — non-fatal if not configured
+    save_analysis(metadata, hashes, score_info)
+
     return render_template(
         "dashboard.html",
         metadata=metadata,
@@ -138,6 +146,16 @@ def analyze():
         yara_info=yara_info,
         score_info=score_info,
         download_id=download_id
+    )
+
+
+@app.route("/history")
+def history():
+    return render_template(
+        "history.html",
+        available=is_available(),
+        error=get_connection_error(),
+        records=get_recent_analyses()
     )
 
 
