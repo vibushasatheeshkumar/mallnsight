@@ -275,6 +275,13 @@ correctly end-to-end on a real file.
    copies of the Flask dev server stayed running on the same port across
    testing sessions, causing the browser/curl to sometimes hit an old,
    outdated version of the app.
+6. **`.env` doesn't deploy itself.** After configuring MongoDB Atlas
+   locally, `/history` worked on `localhost` but still showed
+   "unavailable" on the live Render deployment — because `.env` is
+   gitignored by design and never reaches the deployed environment.
+   `MONGODB_URI` has to be added a second time, directly in Render's
+   own Environment settings, for the cloud feature to work on the
+   public URL.
 
 **Current limitations:**
 

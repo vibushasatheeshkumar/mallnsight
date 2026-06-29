@@ -149,7 +149,27 @@ MallnSight ships ready to deploy on [Render](https://render.com)'s free tier:
 - The repo includes a `Procfile` (`waitress-serve --host=0.0.0.0 --port=$PORT app:app`) and a `runtime.txt` pinning Python 3.12.
 - On Render: **New → Web Service** → connect this GitHub repo → Build Command `pip install -r requirements.txt` → the Start Command is picked up automatically from the `Procfile`.
 - The free tier's filesystem is ephemeral — uploaded files and generated reports won't persist across restarts, which is expected for a stateless demo deployment.
-- To enable `/history` on the deployed instance, add `MONGODB_URI` (and optionally `MONGODB_DB`) as an environment variable in the Render dashboard — **Environment** tab on your service, not in the repo.
+
+### Enabling `/history` on Render
+
+`/history` works locally as soon as `.env` is set up, but **it does not
+automatically carry over to your deployed Render service** — Render
+never reads your local `.env` file (which is gitignored and never
+pushed). You must set the same variable directly in Render:
+
+1. Open [dashboard.render.com](https://dashboard.render.com) → your MallnSight web service.
+2. Go to the **Environment** tab.
+3. Add **`MONGODB_URI`** with your Atlas connection string as the value.
+4. (Optional) Add **`MONGODB_DB`** = `mallnsight`.
+5. Save — Render redeploys automatically with the new variables.
+6. In MongoDB Atlas → **Network Access**, make sure `0.0.0.0/0` (allow
+   from anywhere) is added, since Render's free tier doesn't use a fixed
+   outbound IP — without this, Atlas will refuse Render's connections
+   even with the correct credentials.
+
+Until these steps are done on Render specifically, `/history` will show
+"unavailable" on the live site even though it works locally — this is
+expected, not a bug.
 
 ---
 

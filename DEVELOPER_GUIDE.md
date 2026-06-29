@@ -344,6 +344,13 @@ Python 3.11 and 3.12 for every push/PR to `main`.
   for quick testing). `analysis/history.py` connects with a 5-second
   timeout, so a misconfigured allowlist shows up as `/history` reporting
   "unavailable" rather than the app hanging.
+- **`/history` works locally but says "unavailable" on Render**: `.env`
+  is gitignored and never deployed — it only configures your local
+  machine. `MONGODB_URI` must be added separately as an environment
+  variable in the Render dashboard (**Environment** tab on your
+  service), and Atlas's Network Access must allow `0.0.0.0/0` since
+  Render's free tier has no fixed outbound IP. See `README.md` →
+  "Enabling `/history` on Render."
 - **`history.py`'s connection is cached per-process**: once
   `_get_collection()` has run once (success or failure), it won't retry
   until the process restarts. Use `analysis.history._reset_cache()`
