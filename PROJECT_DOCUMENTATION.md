@@ -293,22 +293,37 @@ End-to-end flow for a single analysis:
 
 ## 10. Screenshots
 
-> Automated screenshots could not be generated in this environment (no
-> headless browser tooling was available). Run the app locally
-> (`python app.py`, then open `http://127.0.0.1:5000`) and paste your own
-> screenshots into the slots below before submitting.
+### Home Page
+![Home Page](screenshots/screenshot_home.png)
 
-| Page | Screenshot |
-|---|---|
-| Home Page | _[insert screenshot of `/`]_ |
-| Features Page | _[insert screenshot of `/features`]_ |
-| Documentation Page | _[insert screenshot of `/about`]_ |
-| Upload Page | _[insert screenshot of `/upload`]_ |
-| Analysis Dashboard (after uploading a file) | _[insert screenshot of `/analyze` result]_ |
-| History Page | _[insert screenshot of `/history`]_ |
-| PDF Report | _[insert screenshot of the downloaded PDF]_ |
+---
 
-To embed an image in this Markdown file once captured:
+### Features Page
+![Features Page](screenshots/screenshot_features.png)
+
+---
+
+### Upload Page
+![Upload Page](screenshots/screenshot_upload.png)
+
+---
+
+### Analysis Dashboard — Verdict, File Info & Hashes
+![Dashboard Top](screenshots/screenshot_dashboard_top.png)
+
+---
+
+### Analysis Dashboard — YARA Matches, Entropy & Strings
+![Dashboard Bottom](screenshots/screenshot_dashboard_bottom.png)
+
+---
+
+### Cloud History Page (MongoDB Atlas)
+![History Page](screenshots/screenshot_history.png)
+
+---
+
+### How to re-embed screenshots
 
 ```markdown
 ![Dashboard Screenshot](screenshots/dashboard.png)
